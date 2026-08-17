@@ -1,0 +1,43 @@
+[project]
+name = "PriceMonitor"
+version = "0.1.0"
+description = "上游自动价格监控脚本"
+readme = "README.md"
+authors = [
+    { name = "Skrepy", email = "155234406+Skrepy0@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aiosmtplib>=5.1.2",
+    "apscheduler>=3.11.3",
+    "email-validator>=2.3.0",
+    "python-dotenv>=1.2.3",
+    "requests>=2.34.2",
+]
+
+[project.scripts]
+pricemonitor = "pricemonitor:main"
+
+[dependency-groups]
+dev = [
+    "email-validator>=2.3.0",
+    "ruff>=0.16.2",
+    "toml-run>=0.0.2",
+]
+
+[tool.ruff]
+line-length = 79
+target-version = "py312"
+extend-exclude = [".venv","logs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "UP"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.scripts]
+build-venv = "python -m venv .venv"
+requirements = "pip freeze > requirements.txt"
+check = "ruff format --check ."
+format = "ruff format ."
