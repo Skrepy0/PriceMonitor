@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -9,7 +10,12 @@ from src.store.json import init
 
 scheduler = AsyncIOScheduler()
 
-scheduler.add_job(monitor_upstream_price, 'interval', seconds=PERIOD)
+scheduler.add_job(
+    monitor_upstream_price,
+    'interval',
+    seconds=PERIOD,
+    next_run_time=datetime.now() + timedelta(seconds=20),
+)
 
 
 async def main():

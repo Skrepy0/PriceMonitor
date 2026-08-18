@@ -15,6 +15,9 @@ station_price = get_station_price()
 
 
 async def monitor_upstream_price():
+    if station_price is None:
+        logger.warning('站点价格获取失败, 跳过本次检查!')
+        return
     try:
         old_price = get_json('upstream_price')
         if not old_price:
