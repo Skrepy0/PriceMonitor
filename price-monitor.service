@@ -5,16 +5,23 @@ Wants=network.target
 
 [Service]
 Type=simple
-User=aihub # 服务器 user 根据服务器情况修改
-Group=aihub # 组 根据服务器情况修改
-WorkingDirectory=/home/aihub/PriceMonitor # 仓库地址 根据服务器情况修改
-Environment="PATH=/home/aihub/PriceMonitor/.venv/bin:/usr/local/bin:/usr/bin:/bin" # 根据服务器情况修改
+# 服务器 user 根据服务器情况修改
+User=root
+# 组 根据服务器情况修改
+Group=root
+# 仓库地址 根据服务器情况修改
+WorkingDirectory=/home/aihub/PriceMonitor
+# 根据服务器情况修改
+Environment="PATH=/home/aihub/PriceMonitor/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
-EnvironmentFile=/home/aihub/PriceMonitor/.env # 根据服务器情况修改
+# 根据服务器情况修改
+EnvironmentFile=/home/aihub/PriceMonitor/.env
 ExecStart=/home/aihub/PriceMonitor/.venv/bin/uv run /home/aihub/PriceMonitor/main.py
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
