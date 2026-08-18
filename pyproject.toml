@@ -41,3 +41,6 @@ build-venv = "python -m venv .venv"
 requirements = "pip freeze > requirements.txt"
 check = "ruff format --check ."
 format = "ruff format ."
+
+[tool.setuptools.packages.find]
+where = ["src"]
