@@ -3,19 +3,32 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 from config import PRICE_RELATED_KEYS
+from monitor.compare import compare_and_build_report
+from monitor.station import get_station_price
 from monitor.upstream import get_upstream_price
 from remind.sender import send_email
 from store.json import get_json, save_json
 
 logger = logging.getLogger(__name__)
 
+station_price = get_station_price()
+
 
 async def monitor_upstream_price():
     try:
         old_price = get_json('upstream_price')
         if not old_price:
-            get_upstream_price()
-            logger.info('首次运行，已保存价格快照，跳过比较')
+            upstream_price = get_upstream_price()
+            logger.info(
+                '首次运行，已保存价格快照，上游价格更新检查, 准备进行站点价格比较'
+            )
+            report = compare_and_build_report(
+                upstream_price=upstream_price, station_price=station_price
+            )
+            if report is not None:
+                logger.info('检测到站点定价异常，发送邮件通知')
+                await send_email(report)
+            logger.info('站点定价正常')
             return
 
         new_price = get_upstream_price()
@@ -33,9 +46,8 @@ async def monitor_upstream_price():
         save_json(new_price, 'upstream_price')
 
         if report is None:
-            logger.info('价格无变化')
+            logger.info('价格无变化, 定价无异常')
         else:
-            logger.info('检测到价格变动，发送邮件通知')
             await send_email(report)
 
     except Exception as e:
@@ -47,8 +59,13 @@ def build_change_report(
 ) -> Optional[str]:
     old_version = old_price.get('pricing_version', '未知')
     new_version = new_price.get('pricing_version', '未知')
-
+    compare_report = compare_and_build_report(
+        upstream_price=new_price, station_price=station_price
+    )
     if old_version == new_version:
+        if compare_report is not None:
+            logger.info('检测到定价异常')
+            return compare_report
         return None
 
     reports = []
@@ -65,50 +82,65 @@ def build_change_report(
     for name, func in diff_functions:
         result = func()
         if result:
-            reports.append(f'【{name}】\n{result}')
+            reports.append(f'<h3>【{name}】</h3>\n{result}')
 
     if not reports:
+        if compare_report is not None:
+            logger.info('检测到定价异常')
+            return compare_report
         return None
 
     header = build_report_header(old_version, new_version)
     body = '\n\n'.join(reports)
+    if compare_report is not None:
+        logger.info('检测到价格变动和定价异常')
+        body += f'\n\n<hr style="border: 2px dashed #dc3545; margin: 20px 0;">\n{compare_report}'
     return f'{header}\n\n{body}'
 
 
 def build_report_header(old_version: str, new_version: str) -> str:
-    return (
-        f'📊 价格变动报告 - {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n'
-        f'旧版本: {old_version}\n'
-        f'新版本: {new_version}\n'
-        f'{"=" * 25}'
-    )
+    return f"""
+    <div style="font-family: Arial, sans-serif; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+        <h2 style="color: #2c3e50;">📊 价格变动报告</h2>
+        <p><strong>生成时间:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <p><strong>旧版本:</strong> <code>{old_version}</code></p>
+        <p><strong>新版本:</strong> <code>{new_version}</code></p>
+        <hr style="border: 1px solid #dee2e6;">
+    </div>
+    """
 
 
 def format_auto_groups_diff(
     old_price: Dict[str, Any], new_price: Dict[str, Any]
 ) -> Optional[str]:
-    """格式化自动分组变动"""
     old_list = old_price.get('auto_groups', [])
     new_list = new_price.get('auto_groups', [])
 
     if old_list == new_list:
         return None
 
-    lines = []
+    lines = ['<ul style="list-style-type: none; padding-left: 0;">']
     len1, len2 = len(old_list), len(new_list)
 
-    # 逐位比较
     for i in range(min(len1, len2)):
         if old_list[i] != new_list[i]:
-            lines.append(f"  索引 {i}: '{old_list[i]}' → '{new_list[i]}'")
+            lines.append(
+                f'  <li style="padding: 4px 0;">索引 {i}: '
+                f'<span style="color: #dc3545;">{old_list[i]}</span> → '
+                f'<span style="color: #28a745;">{new_list[i]}</span></li>'
+            )
 
-    # 长度差异
     if len1 > len2:
-        lines.append(f'  被移除: {old_list[len2:]}')
+        lines.append(
+            f'  <li style="color: #dc3545;">被移除: {old_list[len2:]}</li>'
+        )
     elif len2 > len1:
-        lines.append(f'  新增: {new_list[len1:]}')
+        lines.append(
+            f'  <li style="color: #28a745;">新增: {new_list[len1:]}</li>'
+        )
 
-    return '\n'.join(lines) if lines else None
+    lines.append('</ul>')
+    return '\n'.join(lines) if len(lines) > 2 else None
 
 
 def format_data_diff(
@@ -122,47 +154,74 @@ def format_data_diff(
     removed = diff.get('removed', [])
     modified = diff.get('modified', [])
 
-    lines = [
-        f'新增: {len(added)} 个',
-        f'移除: {len(removed)} 个',
-        f'修改: {len(modified)} 个',
-    ]
+    html = f"""
+    <div style="font-family: Arial, sans-serif;">
+        <p><strong>新增:</strong> {len(added)} 个 &nbsp;|&nbsp; 
+           <strong>移除:</strong> {len(removed)} 个 &nbsp;|&nbsp; 
+           <strong>修改:</strong> {len(modified)} 个</p>
+    """
 
+    # 移除的模型
     if removed:
         names = [item.get('model_name', '未知') for item in removed]
-        lines.append(f'移除的模型: {", ".join(names)}')
+        html += f'<p><span style="color: #dc3545;">移除的模型:</span> {", ".join(names)}</p>'
 
+    # 新增模型
     if added:
-        brief = []
-        for item in added[:10]:
+        html += '<p><strong style="color: #28a745;">新增模型:</strong></p><ul>'
+        for item in added:
             name = item.get('model_name', '未知')
             vendor = item.get('vendor_id', '?')
             ratio = item.get('model_ratio', '?')
             comp = item.get('completion_ratio', '?')
-            brief.append(
-                f'  {name} (vendor={vendor}, ratio={ratio}, comp={comp})'
-            )
-        if len(added) > 10:
-            brief.append(f'  ... 及其他 {len(added) - 10} 个')
-        lines.append('新增模型:\n' + '\n'.join(brief))
+            html += f'<li>{name} (vendor={vendor}, ratio={ratio}, comp={comp})</li>'
+        html += '</ul>'
 
+    # 修改模型
     if modified:
-        lines.append('修改:')
-        for m in modified[:5]:
+        html += """
+        <p><strong style="color: #ffc107;">修改详情:</strong></p>
+        <table style="border-collapse: collapse; width: 100%; font-size: 14px;">
+            <tr style="background: #343a40; color: white;">
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">模型</th>
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">字段</th>
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">旧值</th>
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">新值</th>
+            </tr>
+        """
+        for m in modified:
             name = m.get('model_name', '未知')
             fields = m.get('changed_fields', [])
             old_item = m.get('old', {})
             new_item = m.get('new', {})
-            changes = []
-            for f in fields:
+            row_span = len(fields)
+            for idx, f in enumerate(fields):
                 old_val = old_item.get(f, '无')
                 new_val = new_item.get(f, '无')
-                changes.append(f'{f}: {old_val} → {new_val}')
-            lines.append(f'  {name}: ' + '; '.join(changes))
-        if len(modified) > 5:
-            lines.append(f'  ... 及其他 {len(modified) - 5} 个')
+                # 标记数值变化方向
+                color = ''
+                if isinstance(new_val, (int, float)) and isinstance(
+                    old_val, (int, float)
+                ):
+                    color = (
+                        'color: #28a745;'
+                        if new_val > old_val
+                        else 'color: #dc3545;'
+                        if new_val < old_val
+                        else ''
+                    )
+                html += f"""
+                <tr>
+                    {f'<td style="padding: 8px 12px; border: 1px solid #dee2e6;" rowspan="{row_span}">{name}</td>' if idx == 0 else ''}
+                    <td style="padding: 8px 12px; border: 1px solid #dee2e6;"><code>{f}</code></td>
+                    <td style="padding: 8px 12px; border: 1px solid #dee2e6;">{old_val}</td>
+                    <td style="padding: 8px 12px; border: 1px solid #dee2e6; {color}">{new_val}</td>
+                </tr>
+                """
+        html += '</table>'
 
-    return '\n'.join(lines)
+    html += '</div>'
+    return html
 
 
 def format_group_ratio_diff(
@@ -174,22 +233,48 @@ def format_group_ratio_diff(
     if not diff:
         return None
 
-    lines = [
-        f'新增: {len(diff["added"])} 个',
-        f'移除: {len(diff["removed"])} 个',
-        f'变更: {len(diff["changed"])} 个',
-    ]
+    html = f"""
+    <div style="font-family: Arial, sans-serif;">
+        <p><strong>新增:</strong> {len(diff['added'])} 个 &nbsp;|&nbsp; 
+           <strong>移除:</strong> {len(diff['removed'])} 个 &nbsp;|&nbsp; 
+           <strong>变更:</strong> {len(diff['changed'])} 个</p>
+    """
 
     if diff['added']:
-        lines.append(f'  新增: {", ".join(diff["added"])}')
+        html += f'<p><span style="color: #28a745;">新增分组:</span> {", ".join(diff["added"])}</p>'
     if diff['removed']:
-        lines.append(f'  移除: {", ".join(diff["removed"])}')
-    for item in diff['changed'][:5]:
-        lines.append(f'  {item["group"]}: {item["old"]} → {item["new"]}')
-    if len(diff['changed']) > 5:
-        lines.append(f'  ... 及其他 {len(diff["changed"]) - 5} 个')
+        html += f'<p><span style="color: #dc3545;">移除分组:</span> {", ".join(diff["removed"])}</p>'
 
-    return '\n'.join(lines)
+    if diff['changed']:
+        html += """
+        <table style="border-collapse: collapse; width: 100%; font-size: 14px;">
+            <tr style="background: #343a40; color: white;">
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">分组</th>
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">旧倍率</th>
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">新倍率</th>
+            </tr>
+        """
+        for item in diff['changed'][:10]:
+            color = (
+                'color: #28a745;'
+                if item['new'] > item['old']
+                else 'color: #dc3545;'
+                if item['new'] < item['old']
+                else ''
+            )
+            html += f"""
+            <tr>
+                <td style="padding: 8px 12px; border: 1px solid #dee2e6;">{item['group']}</td>
+                <td style="padding: 8px 12px; border: 1px solid #dee2e6;">{item['old']}</td>
+                <td style="padding: 8px 12px; border: 1px solid #dee2e6; {color}">{item['new']}</td>
+            </tr>
+            """
+        if len(diff['changed']) > 10:
+            html += f'<tr><td colspan="3" style="padding: 8px; text-align: center;">... 及其他 {len(diff["changed"]) - 10} 个分组有变动</td></tr>'
+        html += '</table>'
+
+    html += '</div>'
+    return html
 
 
 def format_usable_group_diff(
@@ -201,16 +286,19 @@ def format_usable_group_diff(
     if not diff:
         return None
 
-    lines = [
-        f'新增: {len(diff["added"])} 个',
-        f'移除: {len(diff["removed"])} 个',
-    ]
-    if diff['added']:
-        lines.append(f'  新增: {", ".join(diff["added"])}')
-    if diff['removed']:
-        lines.append(f'  移除: {", ".join(diff["removed"])}')
+    html = f"""
+    <div style="font-family: Arial, sans-serif;">
+        <p><strong>新增:</strong> {len(diff['added'])} 个 &nbsp;|&nbsp; 
+           <strong>移除:</strong> {len(diff['removed'])} 个</p>
+    """
 
-    return '\n'.join(lines)
+    if diff['added']:
+        html += f'<p><span style="color: #28a745;">新增分组:</span> {", ".join(diff["added"])}</p>'
+    if diff['removed']:
+        html += f'<p><span style="color: #dc3545;">移除分组:</span> {", ".join(diff["removed"])}</p>'
+
+    html += '</div>'
+    return html
 
 
 def data_compare(
@@ -218,11 +306,6 @@ def data_compare(
     new_price: Dict[str, Any],
     compare_keys: Optional[List[str]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """
-    比较新旧模型数据列表，**仅比较与价格相关的字段**。
-    其中 enable_groups 字段比较时忽略顺序（视为集合）。
-    返回: {"added": [...], "removed": [...], "modified": [...]} 或 None
-    """
     if compare_keys is None:
         compare_keys = PRICE_RELATED_KEYS
 
@@ -248,9 +331,7 @@ def data_compare(
             old_val = old_item.get(key)
             new_val = new_item.get(key)
 
-            # 针对 enable_groups 进行集合比较（忽略顺序）
             if key == 'enable_groups':
-                # 确保值为列表，若为 None 则当作空列表
                 old_set = set(old_val) if isinstance(old_val, list) else set()
                 new_set = set(new_val) if isinstance(new_val, list) else set()
                 if old_set != new_set:

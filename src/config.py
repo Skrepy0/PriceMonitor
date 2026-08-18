@@ -27,7 +27,7 @@ PRICE_RELATED_KEYS = [
     'image_ratio',  # 图片相关倍率（如果有）
     'audio_ratio',  # 音频相关倍率
 ]
-
+COMPARE_EXCLUDE_KEYS = ['enable_groups']
 PERIOD = int(os.getenv('PERIOD', '86400'))
 SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.qq.com')
 if not SMTP_HOST:

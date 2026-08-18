@@ -1,5 +1,6 @@
 import logging
-from email.message import EmailMessage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 import aiosmtplib
 
@@ -25,11 +26,11 @@ async def send_email(body: str) -> bool:
         logger.warning('SMTP_PASSWORD 未配置，无法发送邮件')
         return False
 
-    msg = EmailMessage()
+    msg = MIMEMultipart('alternative')
     msg['From'] = SMTP_FROM
     msg['To'] = ', '.join(WARNING_EMAIL_LIST)
     msg['Subject'] = f'{APP_NAME} 提醒'
-    msg.set_content(body.strip())
+    msg.attach(MIMEText(body.strip(), 'html', 'utf-8'))
 
     try:
         await aiosmtplib.send(
