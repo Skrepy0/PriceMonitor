@@ -4,8 +4,8 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.config import PERIOD
-from monitor.upstream_price_monitor import monitor_upstream_price
-from store.json import init
+from src.monitor.upstream_price_monitor import monitor_upstream_price
+from src.store.json import init
 
 scheduler = AsyncIOScheduler()
 
