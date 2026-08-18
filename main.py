@@ -3,7 +3,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from config import PERIOD
+from src.config import PERIOD
 from monitor.upstream_price_monitor import monitor_upstream_price
 from store.json import init
 
