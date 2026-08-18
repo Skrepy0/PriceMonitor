@@ -67,17 +67,21 @@ step "更新 Python 依赖..."
 if command -v uv &> /dev/null; then
     info "使用 uv 同步依赖..."
     uv sync --no-dev
-elif [ -f ".venv/bin/activate" ]; then
-    info "激活虚拟环境并安装依赖..."
-    source .venv/bin/activate
-    if ! python -m pip --version &> /dev/null; then
-        warn "虚拟环境中未找到 pip，尝试安装..."
-        python -m ensurepip || { error "无法安装 pip，请手动安装 uv 或重建虚拟环境。"; exit 1; }
-    fi
-    python -m pip install --upgrade pip
-    python -m pip install -r requirements.txt
+    info "安装项目为可编辑包..."
+    uv pip install -e .
 else
-    warn "未检测到 uv 或虚拟环境，跳过依赖更新。"
+    # 仅当 uv 不可用时才回退到 pip
+    warn "未检测到 uv，使用 pip..."
+    if [ -f ".venv/bin/activate" ]; then
+        source .venv/bin/activate
+        # 注意：这里使用 pip 需要确保虚拟环境包含 pip
+        # 如果是在 uv 环境下，可能仍需显式安装 pip
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+    else
+        warn "未检测到虚拟环境，跳过依赖更新。"
+    fi
 fi
 
 # ---------- 重启 systemd 服务 ----------
