@@ -1,0 +1,16 @@
+aiosmtplib==5.1.2
+APScheduler==3.11.3
+certifi==2026.7.22
+charset-normalizer==3.5.1
+dnspython==2.8.0
+email-validator==2.3.0
+idna==3.18
+-e git+https://github.com/Skrepy0/PriceMonitor.git@f2e8331021dce2801c2e96e72e2a0f0c3fc282d5#egg=pricemonitor
+python-dotenv==1.2.3
+requests==2.34.2
+ruff==0.16.3
+toml-run==0.0.2
+tzdata==2026.3
+tzlocal==5.4.4
+urllib3==2.7.0
+uv==0.12.5
