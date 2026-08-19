@@ -1,9 +1,16 @@
+import logging
 import re
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from config import PRICE_RELATED_KEYS, COMPARE_EXCLUDE_KEYS
+from config import PRICE_RELATED_KEYS, COMPARE_EXCLUDE_KEYS, PRICE_RATIO
+from controller.price_setter import change_model_data
+from data.station_price import (
+    get_station_price_type_from_str,
+    StationPriceData,
+)
 
+logger = logging.getLogger(__name__)
 NOT_NUMBER_KEY = [
     'billing_expr',
     'billing_mode',
@@ -182,6 +189,43 @@ def data_compare(upstream_data: list, station_data: list) -> Dict[str, Any]:
     return report
 
 
+def auto_set_price(
+    abnormal_report: dict, station_price_data: dict
+) -> Dict[str, Any]:
+    result = abnormal_report
+    if abnormal_report['has_abnormal']:
+        abnormal_groups = abnormal_report['abnormal_group']
+        for i in range(len(abnormal_groups)):
+            group = abnormal_groups[i]
+            model_name = group['model_name']
+            abnormal_fields = group['abnormal_fields']
+            for key, value in abnormal_fields.items():
+                station_price_type = get_station_price_type_from_str(key)
+                if station_price_type is not None:
+                    auto_set: float = value['upstream'] * PRICE_RATIO
+                    response = change_model_data(
+                        station_price_type,
+                        model_name,
+                        auto_set,
+                        StationPriceData(station_price_data),
+                    )
+                    if not response['success']:
+                        logger.warning('自动修改模型数据失败,请手动修复')
+                        result['abnormal_group'][i]['abnormal_fields'][key][
+                            'auto_set_price'
+                        ] = '修改失败!'
+                    else:
+                        result['abnormal_group'][i]['abnormal_fields'][key][
+                            'auto_set_price'
+                        ] = auto_set
+                else:
+                    logger.warning('暂不支持自动修改此类型数据, 请手动修复')
+                    result['abnormal_group'][i]['abnormal_fields'][key][
+                        'auto_set_price'
+                    ] = '需手动'
+    return result
+
+
 def compare_and_build_report(
     upstream_price: dict, station_price: dict
 ) -> Optional[str]:
@@ -192,7 +236,9 @@ def compare_and_build_report(
 
     html_parts = []
 
-    model_report = data_compare(upstream_data, station_data)
+    model_report = auto_set_price(
+        data_compare(upstream_data, station_data), station_price
+    )
     if model_report['has_abnormal']:
         html_parts.append(
             '<h3 style="color: #dc3545; margin-top: 0;">⚠️ 模型定价异常</h3>'
@@ -206,6 +252,7 @@ def compare_and_build_report(
                 <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">异常字段</th>
                 <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">上游值</th>
                 <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">站点值</th>
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">自动修改后的值</th>
             </tr>
         """)
         for item in model_report['abnormal_group']:
@@ -215,6 +262,7 @@ def compare_and_build_report(
             for idx, (field, values) in enumerate(fields.items()):
                 upstream_val = values['upstream']
                 station_val = values['station']
+                auto_set_val = values['auto_set_price']
                 # 标记异常方向（红色表示偏低）
                 color = (
                     '#dc3545'
@@ -222,12 +270,18 @@ def compare_and_build_report(
                     and station_val < upstream_val
                     else '#856404'
                 )
+                auto_set_color = (
+                    '#e43d30'
+                    if not isinstance(station_val, (int, float))
+                    else '#52a535'
+                )
                 html_parts.append(f"""
                     <tr>
                         {f'<td style="padding: 8px 12px; border: 1px solid #dee2e6; vertical-align: middle;" rowspan="{rowspan}">{model_name}</td>' if idx == 0 else ''}
                         <td style="padding: 8px 12px; border: 1px solid #dee2e6;"><code>{field}</code></td>
                         <td style="padding: 8px 12px; border: 1px solid #dee2e6;">{upstream_val}</td>
                         <td style="padding: 8px 12px; border: 1px solid #dee2e6; color: {color}; font-weight: bold;">{station_val}</td>
+                        <td style="padding: 8px 12px; border: 1px solid #dee2e6; color: {auto_set_color}; font-weight: bold;">{auto_set_val}</td>
                     </tr>
                 """)
         html_parts.append('</table>')

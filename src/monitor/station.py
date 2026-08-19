@@ -7,7 +7,7 @@ token = STATION_TOKEN
 headers = {'Authorization': f'Bearer {token}'}
 
 
-def get_station_price():
+def get_station_price() -> dict | None:
     response = requests.get(f'{base_url}api/pricing', headers=headers)
     if response.status_code == 200:
         return response.json()
