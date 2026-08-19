@@ -3,7 +3,13 @@ import re
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from config import PRICE_RELATED_KEYS, COMPARE_EXCLUDE_KEYS, PRICE_RATIO
+from config import (
+    PRICE_RELATED_KEYS,
+    COMPARE_EXCLUDE_KEYS,
+    PRICE_RATIO,
+    GROUP_RATIO_RATIO,
+)
+from controller.group_setter import change_group_ratio
 from controller.price_setter import change_model_data
 from data.station_price import (
     get_station_price_type_from_str,
@@ -41,6 +47,45 @@ def group_ratio_compare(
             )
             report['has_abnormal'] = True
     return report
+
+
+def auto_set_group_ratio(report: dict, station_price: dict) -> dict:
+    """
+    自动修正分组比率。
+    返回:
+    {
+        "has_abnormal": bool,
+        "abnormal_group": [
+            {
+                "group":
+                 {
+                    "upstream_ratio": x,
+                    "station_ratio": y,
+                    "auto_set_ratio": z|str
+                 }
+            },
+            ...
+        ]
+    }
+    """
+    result = report
+    if report['has_abnormal']:
+        abnormal_group = report['abnormal_group']
+        for i in range(len(abnormal_group)):
+            group = abnormal_group[i]
+            group_name = list(group.keys())[0]
+            value = group[group_name]['upstream_ratio'] * GROUP_RATIO_RATIO
+            response = change_group_ratio(group_name, value, station_price)
+            if response is None:
+                result['abnormal_group'][i][group_name]['auto_set_ratio'] = (
+                    '修改失败!'
+                )
+                logger.warning(f'修改{group_name}倍率失败!')
+            else:
+                result['abnormal_group'][i][group_name]['auto_set_ratio'] = (
+                    value
+                )
+    return result
 
 
 def _extract_variable_coeffs(expr: str) -> Dict[str, float]:
@@ -192,6 +237,26 @@ def data_compare(upstream_data: list, station_data: list) -> Dict[str, Any]:
 def auto_set_price(
     abnormal_report: dict, station_price_data: dict
 ) -> Dict[str, Any]:
+    """
+    自动修正模型价格字段。
+    对于 billing_expr 字段，无法自动修复, 发送信息提醒管理员手动修复
+    返回: {
+        "has_abnormal": bool,
+        "abnormal_group": [
+            {
+                "model_name": "xxx",
+                "abnormal_fields": {
+                    "field1": {
+                        "upstream": val1,
+                        "station": val2,
+                        "auto_set_price": val3|str
+                    },
+                    ...
+                }
+            }
+        ]
+    }
+    """
     result = abnormal_report
     if abnormal_report['has_abnormal']:
         abnormal_groups = abnormal_report['abnormal_group']
@@ -272,7 +337,7 @@ def compare_and_build_report(
                 )
                 auto_set_color = (
                     '#e43d30'
-                    if not isinstance(station_val, (int, float))
+                    if not isinstance(auto_set_val, (int, float))
                     else '#52a535'
                 )
                 html_parts.append(f"""
@@ -287,7 +352,9 @@ def compare_and_build_report(
         html_parts.append('</table>')
 
     if group_ratio_up and group_ratio_st:
-        ratio_report = group_ratio_compare(group_ratio_up, group_ratio_st)
+        ratio_report = auto_set_group_ratio(
+            group_ratio_compare(group_ratio_up, group_ratio_st), station_price
+        )
         if ratio_report['has_abnormal']:
             html_parts.append(
                 '<h3 style="color: #dc3545; margin-top: 0;">⚠️ 分组倍率异常</h3>'
@@ -300,15 +367,31 @@ def compare_and_build_report(
                     <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">分组名称</th>
                     <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">上游倍率</th>
                     <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">站点倍率</th>
+                    <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">自动修改后倍率</th>
                 </tr>
             """)
             for item in ratio_report['abnormal_group']:
                 for group, values in item.items():
                     html_parts.append(f"""
                         <tr>
-                            <td style="padding: 8px 12px; border: 1px solid #dee2e6;">{group}</td>
-                            <td style="padding: 8px 12px; border: 1px solid #dee2e6;">{values['upstream_ratio']}</td>
-                            <td style="padding: 8px 12px; border: 1px solid #dee2e6; color: #dc3545; font-weight: bold;">{values['station_ratio']}</td>
+                            <td style="padding: 8px 12px; border: 1px solid #dee2e6;">{
+                        group
+                    }</td>
+                            <td style="padding: 8px 12px; border: 1px solid #dee2e6;">{
+                        values['upstream_ratio']
+                    }</td>
+                            <td style="padding: 8px 12px; border: 1px solid #dee2e6; color: #dc3545; font-weight: bold;">{
+                        values['station_ratio']
+                    }</td>
+                            <td style="padding: 8px 12px; border: 1px solid #dee2e6; color: {
+                        (
+                            '#e43d30'
+                            if not isinstance(
+                                values['auto_set_ratio'], (int, float)
+                            )
+                            else '#52a535'
+                        )
+                    }; font-weight: bold;">{values['auto_set_ratio']}</td>
                         </tr>
                     """)
             html_parts.append('</table>')
