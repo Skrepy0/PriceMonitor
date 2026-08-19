@@ -48,6 +48,7 @@ SMTP_PASSWORD=your_smtp_password
 ### 可选配置
 
 ```env
+PRICE_RATIO=1.14
 SMTP_FROM=your_email@example.com
 WARNING_EMAIL=a@example.com,b@example.com
 PERIOD=86400
@@ -66,6 +67,7 @@ PERIOD=86400
 - `SMTP_FROM`：发件人地址，不填则默认使用 `SMTP_USER`
 - `WARNING_EMAIL`：告警接收邮箱，多个地址用英文逗号或分号分隔
 - `PERIOD`：监控周期，单位为秒，默认 `86400`（1 天）
+- `PRICE_RATIO`：自动修正价格倍率(自动修正价格=`PRICE_RATIO`*上游价格)
 
 ## 安装
 
