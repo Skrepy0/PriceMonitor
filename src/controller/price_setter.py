@@ -3,7 +3,7 @@ import logging
 
 import requests
 
-from config import STATION_URL, STATION_TOKEN
+from controller import BASE_URL, HEADERS
 from data.station_price import (
     StationPriceData,
     StationPriceType,
@@ -11,18 +11,12 @@ from data.station_price import (
 )
 
 logger = logging.getLogger(__name__)
-BASE_URL = STATION_URL
-ACCESS_TOKEN = STATION_TOKEN
 
 
 def update_option(key: StationPriceOption, value) -> dict:
     url = f'{BASE_URL}/api/option/'
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {ACCESS_TOKEN}',  # 或使用 New-API-User / Cookie，取决于你的鉴权方式
-    }
     payload = {'key': key.value, 'value': value}
-    resp = requests.put(url, json=payload, headers=headers)
+    resp = requests.put(url, json=payload, headers=HEADERS)
     resp.raise_for_status()
     return resp.json()
 

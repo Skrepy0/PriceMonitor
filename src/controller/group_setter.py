@@ -3,24 +3,19 @@ import logging
 
 import requests
 
-from config import STATION_URL, STATION_TOKEN
+from controller import HEADERS
+from controller.price_setter import BASE_URL
 
 logger = logging.getLogger(__name__)
-BASE_URL = STATION_URL
-ACCESS_TOKEN = STATION_TOKEN
 
 
 def update_group_ratio(data: dict) -> dict:
     url = f'{BASE_URL}/api/option/'
-    headers = {
-        'Authorization': f'Bearer {ACCESS_TOKEN}',
-        'Content-Type': 'application/json',
-    }
     payload = {
         'key': 'GroupRatio',
         'value': json.dumps(data, ensure_ascii=False),
     }
-    resp = requests.put(url, json=payload, headers=headers)
+    resp = requests.put(url, json=payload, headers=HEADERS)
     return resp.json()
 
 

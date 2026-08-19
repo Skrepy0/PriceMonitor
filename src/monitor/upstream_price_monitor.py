@@ -39,10 +39,7 @@ async def monitor_upstream_price():
             logger.warning('上游价格获取失败')
             return
 
-        logger.info(
-            '上游价格获取成功，版本: %s',
-            new_price.get('pricing_version', '未知'),
-        )
+        logger.info('上游价格获取成功')
 
         report = build_change_report(old_price, new_price)
 
@@ -65,11 +62,6 @@ def build_change_report(
     compare_report = compare_and_build_report(
         upstream_price=new_price, station_price=station_price
     )
-    if old_version == new_version:
-        if compare_report is not None:
-            logger.info('检测到定价异常')
-            return compare_report
-        return None
 
     reports = []
     diff_functions = [

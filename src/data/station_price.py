@@ -40,6 +40,18 @@ class StationPriceType(str, Enum):
         return mapping[self]
 
 
+PRICE_TYPES = [
+    StationPriceType.MODEL_PRICE,
+    StationPriceType.MODEL_RATIO,
+    StationPriceType.CACHE_RATIO,
+    StationPriceType.COMPLETION_RATIO,
+    StationPriceType.CREATE_CACHE_RATIO,
+    StationPriceType.AUDIO_RATION,
+    StationPriceType.AUDIO_COMPLETION_RATIO,
+    StationPriceType.IMAGE_RATIO,
+]
+
+
 def get_station_price_type_from_str(key: str) -> StationPriceType | None:
     try:
         res = StationPriceType(key)
