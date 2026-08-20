@@ -12,10 +12,12 @@ from store.json import get_json, save_json
 
 logger = logging.getLogger(__name__)
 
-station_price = get_station_price()
+station_price = None
 
 
 async def monitor_upstream_price():
+    global station_price
+    station_price = get_station_price()
     if station_price is None:
         logger.warning('站点价格获取失败, 跳过本次检查!')
         return
