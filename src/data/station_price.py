@@ -63,7 +63,10 @@ def get_station_price_type_from_str(key: str) -> StationPriceType | None:
 class StationPriceData:
     def __init__(self, station_price: dict):
         self.price = station_price
-        self.station_model_data = station_price['data']
+        self.is_available = False
+        if self.price:
+            self.is_available = True
+        self.station_model_data = self.price.get('data')
         self.model_price = {}
         self.model_ratio = {}
         self.cache_ratio = {}
@@ -72,25 +75,26 @@ class StationPriceData:
         self.audio_ratio = {}
         self.audio_completion_ratio = {}
         self.image_ratio = {}
-        for model in self.station_model_data:
-            name = model['model_name']
-            for key, value in model.items():
-                if key == StationPriceType.MODEL_PRICE and value != 0:
-                    self.model_price[name] = value
-                elif key == StationPriceType.MODEL_RATIO:
-                    self.model_ratio[name] = value
-                elif key == StationPriceType.CACHE_RATIO:
-                    self.cache_ratio[name] = value
-                elif key == StationPriceType.COMPLETION_RATIO:
-                    self.completion_ratio[name] = value
-                elif key == StationPriceType.CREATE_CACHE_RATIO:
-                    self.create_cache_ratio[name] = value
-                elif key == StationPriceType.AUDIO_RATION:
-                    self.audio_ratio[name] = value
-                elif key == StationPriceType.AUDIO_COMPLETION_RATIO:
-                    self.audio_completion_ratio[name] = value
-                elif key == StationPriceType.IMAGE_RATIO:
-                    self.image_ratio[name] = value
+        if self.is_available:
+            for model in self.station_model_data:
+                name = model['model_name']
+                for key, value in model.items():
+                    if key == StationPriceType.MODEL_PRICE and value != 0:
+                        self.model_price[name] = value
+                    elif key == StationPriceType.MODEL_RATIO:
+                        self.model_ratio[name] = value
+                    elif key == StationPriceType.CACHE_RATIO:
+                        self.cache_ratio[name] = value
+                    elif key == StationPriceType.COMPLETION_RATIO:
+                        self.completion_ratio[name] = value
+                    elif key == StationPriceType.CREATE_CACHE_RATIO:
+                        self.create_cache_ratio[name] = value
+                    elif key == StationPriceType.AUDIO_RATION:
+                        self.audio_ratio[name] = value
+                    elif key == StationPriceType.AUDIO_COMPLETION_RATIO:
+                        self.audio_completion_ratio[name] = value
+                    elif key == StationPriceType.IMAGE_RATIO:
+                        self.image_ratio[name] = value
 
     def get_price(self):
         return self.price
