@@ -7,6 +7,7 @@
 - 定时监控上游价格接口，按固定周期检查价格变动
 - 拉取站点价格并与上游价格进行对比
 - 检测模型价格、分组倍率、可用分组等关键字段是否异常
+- 支持自动修复异常字段
 - 支持 `billing_expr` 表达式对比，判断站点定价是否低于上游
 - 将价格快照保存到本地 JSON 文件，便于后续比对
 - 通过 SMTP 发送邮件告警
@@ -49,6 +50,7 @@ SMTP_PASSWORD=your_smtp_password
 
 ```env
 PRICE_RATIO=1.14
+GROUP_RATIO_RATIO=1
 SMTP_FROM=your_email@example.com
 WARNING_EMAIL=a@example.com,b@example.com
 PERIOD=86400
@@ -68,6 +70,7 @@ PERIOD=86400
 - `WARNING_EMAIL`：告警接收邮箱，多个地址用英文逗号或分号分隔
 - `PERIOD`：监控周期，单位为秒，默认 `86400`（1 天）
 - `PRICE_RATIO`：自动修正价格倍率(自动修正价格=`PRICE_RATIO`*上游价格)
+- `GROUP_RATIO_RATIO`：分组倍率修正倍率(自动修正倍率=`GROUP_RATIO_RATIO`*上游分组倍率)
 
 ## 安装
 
