@@ -41,7 +41,10 @@ def add_new_model(
     resp = requests.post(
         f'{BASE_URL}/api/models/', json=model_payload, headers=HEADERS
     )
-    if not resp.json()['success']:
+    if (
+        not resp.json()['success']
+        and resp.json()['message'] != '模型名称已存在'
+    ):
         result['success'] = False
         result['msg'].append(resp.json())
         return result
@@ -50,7 +53,7 @@ def add_new_model(
     for price_type in PRICE_TYPES:
         if price_type.value in key_list:
             if (
-                model['quota_type'] == 0
+                model_data.get('quota_type') == 0
                 and price_type == StationPriceType.MODEL_PRICE
             ):
                 continue

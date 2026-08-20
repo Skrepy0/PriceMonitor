@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any, List
 from config import PRICE_RELATED_KEYS
 from monitor.compare import compare_and_build_report
 from monitor.station import get_station_price
+from monitor.update_station import update
 from monitor.upstream import get_upstream_price
 from remind.sender import send_email
 from store.json import get_json, save_json
@@ -18,31 +19,63 @@ async def monitor_upstream_price():
     if station_price is None:
         logger.warning('站点价格获取失败, 跳过本次检查!')
         return
+
     try:
         old_price = get_json('upstream_price')
         if not old_price:
+            # ---------- 首次运行 ----------
             upstream_price = get_upstream_price()
-            logger.info(
-                '首次运行，已保存价格快照，上游价格更新检查, 准备进行站点价格比较'
-            )
-            report = compare_and_build_report(
+            if not upstream_price:
+                logger.warning('上游价格获取失败，首次运行中止')
+                return
+
+            logger.info('首次运行，获取上游价格成功，开始同步站点数据...')
+
+            # 执行同步操作
+            update_report = update(upstream_price, station_price)
+            sync_success = update_report.get('success', False)
+
+            # 执行定价异常检查
+            compare_report = compare_and_build_report(
                 upstream_price=upstream_price, station_price=station_price
             )
-            if report is not None:
-                logger.info('检测到站点定价异常，发送邮件通知')
-                await send_email(report)
-            logger.info('站点定价正常')
+
+            # 决定是否发送邮件
+            should_send = False
+            final_report = None
+
+            if compare_report is not None:
+                # 有定价异常，必须发送
+                should_send = True
+                if sync_success and update_report.get('message'):
+                    # 同步成功且有变更，合并两份报告
+                    final_report = build_merge_report(
+                        update_report, compare_report
+                    )
+                else:
+                    # 仅发送异常报告
+                    final_report = compare_report
+            elif not sync_success:
+                # 同步操作中有失败，发送同步结果报告
+                should_send = True
+                final_report = build_update_report(update_report)
+
+            if should_send and final_report:
+                await send_email(final_report)
+                logger.info('邮件通知已发送')
+            else:
+                logger.info('首次运行同步完成，无异常且全部成功，不发送邮件')
+
             return
 
+        # ---------- 后续周期运行 ----------
         new_price = get_upstream_price()
         if not new_price:
             logger.warning('上游价格获取失败')
             return
 
         logger.info('上游价格获取成功')
-
         report = build_change_report(old_price, new_price)
-
         save_json(new_price, 'upstream_price')
 
         if report is None:
@@ -52,6 +85,103 @@ async def monitor_upstream_price():
 
     except Exception as e:
         logger.error('监控任务执行异常: %s', e, exc_info=True)
+
+
+def _format_action(action: str) -> str:
+    """将动作代码转为中文描述"""
+    mapping = {
+        'create_group': '创建分组',
+        'create_model': '创建模型',
+        'update_order': '更新自动分组顺序',
+    }
+    return mapping.get(action, action)
+
+
+def _extract_result_summary(result: dict) -> str:
+    """从结果字典中提取可读的摘要信息"""
+    if not result:
+        return '无详细信息'
+    if isinstance(result, dict):
+        if result.get('success') is False:
+            # 提取错误信息
+            msg = result.get('msg') or result.get('message')
+            if isinstance(msg, list):
+                return '; '.join(str(m) for m in msg)
+            return str(msg) if msg else '失败（无详细信息）'
+        else:
+            return '成功'
+    return str(result)
+
+
+def build_update_report(update_report: dict) -> str:
+    """生成首次运行同步结果报告（不含定价异常）"""
+    success = update_report.get('success', False)
+    steps = update_report.get('steps', [])
+
+    # 整体状态横幅
+    status_color = '#28a745' if success else '#dc3545'
+    status_text = '✅ 同步成功' if success else '❌ 同步失败'
+
+    rows = ''
+    for step in steps:
+        step_name = step.get('step', '').capitalize()
+        items = step.get('items', [])
+        if not items:
+            rows += f"""
+            <tr>
+                <td style="padding: 8px 12px; border: 1px solid #dee2e6;"><strong>{step_name}</strong></td>
+                <td style="padding: 8px 12px; border: 1px solid #dee2e6;" colspan="3">无变更</td>
+            </tr>
+            """
+            continue
+        # 每个步骤可能有多项操作，合并显示
+        for item in items:
+            action = _format_action(item.get('action', ''))
+            name = item.get('name', '-')
+            item_success = item.get('success', False)
+            result_summary = _extract_result_summary(item.get('result', {}))
+            status_icon = '✅' if item_success else '❌'
+            color = '#28a745' if item_success else '#dc3545'
+            rows += f"""
+            <tr>
+                <td style="padding: 8px 12px; border: 1px solid #dee2e6;"><strong>{step_name}</strong></td>
+                <td style="padding: 8px 12px; border: 1px solid #dee2e6;">{action}</td>
+                <td style="padding: 8px 12px; border: 1px solid #dee2e6;">{name}</td>
+                <td style="padding: 8px 12px; border: 1px solid #dee2e6; color: {color};">{status_icon} {result_summary}</td>
+            </tr>
+            """
+
+    return f"""
+    <div style="font-family: Arial, sans-serif; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+        <div style="background: {status_color}; color: white; padding: 12px 20px; border-radius: 6px; margin-bottom: 20px; font-size: 18px; font-weight: bold;">
+            {status_text}
+        </div>
+        <p><strong>同步操作明细</strong></p>
+        <table style="border-collapse: collapse; width: 100%; font-size: 14px;">
+            <tr style="background: #343a40; color: white;">
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">步骤</th>
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">操作</th>
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">名称</th>
+                <th style="padding: 8px 12px; border: 1px solid #dee2e6; text-align: left;">结果</th>
+            </tr>
+            {rows}
+        </table>
+    </div>
+    """
+
+
+def build_merge_report(update_report: dict, compare_report: str) -> str:
+    """合并同步结果与定价异常报告"""
+    # 复用同步部分，添加分隔线和异常报告
+    sync_html = build_update_report(update_report)
+    return f"""
+    {sync_html}
+    <hr style="border: 2px dashed #dc3545; margin: 30px 0;">
+    <div style="margin-top: 20px;">
+        <h3 style="color: #dc3545;">⚠️ 定价异常详情</h3>
+        {compare_report}
+    </div>
+    """
 
 
 def build_change_report(
