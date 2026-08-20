@@ -54,6 +54,21 @@ def get_vendor_id_by_model(model: dict) -> int:
         )
         data = resp.json()
         if data['success']:
-            res = data.get('data').get('items').get(0).get(id)
-            return res if res else -1
+            items = data.get('data').get('items')
+            if len(items) != 0:
+                res = items[0].get(id)
+                return res if res else -1
     return -1
+
+
+def translate_vendor(
+    upstream_vendors: list[dict], station_vendors: list[dict], vendor_id: int
+):
+    up_vendors = {}
+    st_vendors = {}
+    for item in upstream_vendors:
+        up_vendors[item['id']] = item['name'].lower()
+    for item in station_vendors:
+        st_vendors[item['name'].lower()] = item['id']
+    res = st_vendors.get(up_vendors.get(vendor_id))
+    return res if res else -1

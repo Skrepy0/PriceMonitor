@@ -10,7 +10,7 @@ from config import (
     GROUP_RATIO_RATIO,
 )
 from controller.group_setter import change_group_ratio
-from controller.price_setter import change_model_data
+from controller.price_setter import change_models_data
 from data.station_price import (
     get_station_price_type_from_str,
     StationPriceData,
@@ -260,34 +260,40 @@ def auto_set_price(
     result = abnormal_report
     if abnormal_report['has_abnormal']:
         abnormal_groups = abnormal_report['abnormal_group']
+        data = []
         for i in range(len(abnormal_groups)):
             group = abnormal_groups[i]
             model_name = group['model_name']
             abnormal_fields = group['abnormal_fields']
+
             for key, value in abnormal_fields.items():
                 station_price_type = get_station_price_type_from_str(key)
                 if station_price_type is not None:
                     auto_set: float = value['upstream'] * PRICE_RATIO
-                    response = change_model_data(
-                        station_price_type,
-                        model_name,
-                        auto_set,
-                        StationPriceData(station_price_data),
-                    )
-                    if not response['success']:
-                        logger.warning('自动修改模型数据失败,请手动修复')
-                        result['abnormal_group'][i]['abnormal_fields'][key][
-                            'auto_set_price'
-                        ] = '修改失败!'
-                    else:
-                        result['abnormal_group'][i]['abnormal_fields'][key][
-                            'auto_set_price'
-                        ] = auto_set
+                    item = {
+                        'key': station_price_type,
+                        'value': auto_set,
+                        'model': model_name,
+                    }
+                    data.append(item)
+                    result['abnormal_group'][i]['abnormal_fields'][key][
+                        'auto_set_price'
+                    ] = auto_set
                 else:
                     logger.warning('暂不支持自动修改此类型数据, 请手动修复')
                     result['abnormal_group'][i]['abnormal_fields'][key][
                         'auto_set_price'
                     ] = '需手动'
+        response = change_models_data(
+            data,
+            StationPriceData(station_price_data),
+        )
+        if not response['success']:
+            logger.warning('自动修改模型数据失败,请手动修复')
+            for key in result['abnormal_group'][i]['abnormal_fields'].keys():
+                result['abnormal_group'][i]['abnormal_fields'][key][
+                    'auto_set_price'
+                ] = '修改失败!'
     return result
 
 

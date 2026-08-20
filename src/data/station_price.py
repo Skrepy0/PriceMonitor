@@ -56,12 +56,13 @@ def get_station_price_type_from_str(key: str) -> StationPriceType | None:
     try:
         res = StationPriceType(key)
         return res
-    except ValueError as e:
+    except ValueError:
         return None
 
 
 class StationPriceData:
     def __init__(self, station_price: dict):
+        self.price = station_price
         self.station_model_data = station_price['data']
         self.model_price = {}
         self.model_ratio = {}
@@ -91,6 +92,9 @@ class StationPriceData:
                 elif key == StationPriceType.IMAGE_RATIO:
                     self.image_ratio[name] = value
 
+    def get_price(self):
+        return self.price
+
     def get_model_price(self):
         return self.model_price
 
@@ -113,7 +117,7 @@ class StationPriceData:
         return self.completion_ratio
 
     def change_completion_ratio(self, model: str, value: float):
-        self.audio_completion_ratio[model] = value
+        self.completion_ratio[model] = value
 
     def get_create_cache_ratio(self):
         return self.create_cache_ratio
@@ -125,7 +129,7 @@ class StationPriceData:
         return self.audio_ratio
 
     def change_audio_ratio(self, model: str, value: float):
-        self.audio_completion_ratio[model] = value
+        self.audio_ratio[model] = value
 
     def get_audio_completion_ratio(self):
         return self.audio_completion_ratio
