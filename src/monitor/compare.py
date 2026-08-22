@@ -1,5 +1,4 @@
 import logging
-import re
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -12,7 +11,8 @@ from config import (
     MAX_BASE_PRICE,
 )
 from controller.group_setter import change_group_ratio
-from controller.price_setter import change_models_data
+from controller.price_setter import change_models_data, change_billing_expr
+from data.billing_exper import BillingExper
 from data.station_price import (
     get_station_price_type_from_str,
     StationPriceData,
@@ -90,75 +90,8 @@ def auto_set_group_ratio(report: dict, station_price: dict) -> dict:
     return result
 
 
-def _extract_variable_coeffs(expr: str) -> Dict[str, float]:
-    """
-    从表达式中提取变量 -> 系数 映射。
-    仅处理计费部分的算术项，忽略条件。
-    """
-    # 移除字符串内容（如 tier 的标签）
-    expr = re.sub(r'"[^"]*"', '', expr)
-    # 查找乘法项：var * num 或 num * var
-    pattern = r'([a-zA-Z_][a-zA-Z0-9_]*)\s*\*\s*(\d+\.?\d*)|(\d+\.?\d*)\s*\*\s*([a-zA-Z_][a-zA-Z0-9_]*)'
-    matches = re.findall(pattern, expr)
-    coeffs = {}
-    for m in matches:
-        if m[0] and m[1]:
-            var, coeff = m[0], float(m[1])
-        elif m[2] and m[3]:
-            var, coeff = m[3], float(m[2])
-        else:
-            continue
-        coeffs[var] = coeffs.get(var, 0) + coeff
-    # 处理单独的变量（系数为1），比如 "p + c"
-    all_vars = set(re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', expr))
-    for var in all_vars:
-        if var not in coeffs:
-            coeffs[var] = coeffs.get(var, 0) + 1
-    return coeffs
-
-
 def compare_billing_expr(upstream: str, station: str) -> bool:
-    """
-    比较 billing_expr，返回 True 表示站点定价不低于上游（无异常）。
-
-    规则：
-      1. 如果存在 '?'，则 '?' 之前的部分（条件）必须完全相同。
-      2. 计费部分（'?' 之后，若无 '?' 则为整个表达式）：
-          - 上游每个变量的系数，下游必须有且 >= 上游。
-          - 下游可以有额外变量（视为正常）。
-    """
-    if not upstream or not station:
-        return True
-
-    # 1. 处理条件部分（仅在存在 '?' 时比较）
-    def split_expr(expr: str):
-        if '?' in expr:
-            cond, pricing = expr.split('?', 1)
-            return cond.strip(), pricing.strip()
-        else:
-            return None, expr.strip()
-
-    up_cond, up_pricing = split_expr(upstream)
-    st_cond, st_pricing = split_expr(station)
-
-    if up_cond is not None and st_cond is not None:
-        if up_cond != st_cond:
-            return False
-    elif up_cond is not None or st_cond is not None:
-        # 一个有一个没有，视为不一致
-        return False
-
-    # 2. 提取并比较计费部分的系数
-    up_coeffs = _extract_variable_coeffs(up_pricing)
-    st_coeffs = _extract_variable_coeffs(st_pricing)
-
-    for var, coeff in up_coeffs.items():
-        if var not in st_coeffs:
-            return False
-        if st_coeffs[var] < coeff:
-            return False
-
-    return True
+    return BillingExper.compare_exprs(upstream, station)
 
 
 def data_compare(upstream_data: list, station_data: list) -> Dict[str, Any]:
@@ -229,7 +162,14 @@ def data_compare(upstream_data: list, station_data: list) -> Dict[str, Any]:
                         'upstream': upstream_val,
                         'station': station_val,
                     }
-
+        if (
+            'billing_expr' in upstream_model.keys()
+            and 'billing_expr' not in model.keys()
+        ):
+            abnormal_fields['billing_expr'] = {
+                'upstream': upstream_model.get('billing_expr'),
+                'station': '',
+            }
         if abnormal_fields:
             report['abnormal_group'].append(
                 {'model_name': model_name, 'abnormal_fields': abnormal_fields}
@@ -285,10 +225,27 @@ def auto_set_price(
                         'auto_set_price'
                     ] = auto_set
                 else:
-                    logger.warning('暂不支持自动修改此类型数据, 请手动修复')
-                    result['abnormal_group'][i]['abnormal_fields'][key][
-                        'auto_set_price'
-                    ] = '需手动'
+                    if key == 'billing_expr':
+                        upstream_expr = value.get('upstream')
+                        station_expr = value.get('station')
+                        corrected = BillingExper.correct_station_expr(
+                            upstream_expr, station_expr
+                        )
+                        res = change_billing_expr(model_name, corrected)
+                        result['abnormal_group'][i]['abnormal_fields'][key][
+                            'auto_set_price'
+                        ] = (
+                            corrected
+                            if res['success']
+                            else f'修改失败,请手动修复{res["message"]}'
+                        )
+                    else:
+                        logger.warning(
+                            '暂不支持自动修改此类型数据, 请手动修复'
+                        )
+                        result['abnormal_group'][i]['abnormal_fields'][key][
+                            'auto_set_price'
+                        ] = '需手动'
         response = change_models_data(
             data,
             StationPriceData(station_price_data),

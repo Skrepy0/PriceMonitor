@@ -44,3 +44,46 @@ def change_models_data(
         result['message'] += response['message']
         result['success'] = response['success'] and result['success']
     return result
+
+
+def get_current_options():
+    resp = requests.get(f'{BASE_URL}/api/option/', headers=HEADERS)
+    data = resp.json()
+    options = {item['key']: item['value'] for item in data.get('data', [])}
+    return options
+
+
+def change_billing_expr(model: str, value: str) -> dict:
+    options = get_current_options()
+
+    current_exprs = json.loads(
+        options.get('billing_setting.billing_expr') or '{}'
+    )
+    current_modes = json.loads(
+        options.get('billing_setting.billing_mode') or '{}'
+    )
+
+    current_exprs[model] = value
+    current_modes[model] = 'tiered_expr'
+
+    raw_res = []
+    for key, val in [
+        ('billing_setting.billing_expr', json.dumps(current_exprs)),
+        ('billing_setting.billing_mode', json.dumps(current_modes)),
+    ]:
+        payload = {'key': key, 'value': val}
+        resp = requests.put(
+            f'{BASE_URL}/api/option/', headers=HEADERS, json=payload
+        )
+        raw_res.append(resp.json())
+
+    return {
+        'success': raw_res[0]['success'] and raw_res[1]['success'],
+        'message': raw_res[0]['message'] + raw_res[1]['message'],
+    }
+
+
+if __name__ == '__main__':
+    value = 'len <= 512000 ? tier("tier_1", p * 0.3 + c * 1.2 + cr * 0.06) : tier("tier_2", p * 0.6 + c * 2.4 + cr * 0.12)'
+    res = change_billing_expr('claude-fable-5', value)
+    print(res)

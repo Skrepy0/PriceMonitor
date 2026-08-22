@@ -6,7 +6,8 @@ from config import PRICE_RELATED_KEYS, GROUP_RATIO_RATIO, PRICE_RATIO
 from controller.auto_groups_setter import update_group_order
 from controller.group_setter import create_new_group
 from controller.model import add_new_model
-from controller.price_setter import change_models_data
+from controller.price_setter import change_models_data, change_billing_expr
+from data.billing_exper import BillingExper
 from data.station_price import (
     StationPriceData,
     get_station_price_type_from_str,
@@ -340,6 +341,7 @@ def auto_update_model_data(
         'modified_failed': [],
         'advice': [],
     }
+    station_data = station_price.get('data', [])
     added = compare_report.get('added', [])
     modified = compare_report.get('modified', [])
     for model in new_price_data:
@@ -361,10 +363,42 @@ def auto_update_model_data(
                             field
                         )
                         if station_price_type is None:
-                            result['modified_failed'].append(model)
-                            result['advice'].append(
-                                f'无法修改模型{item.get("model_name")}的{field}属性, 请手动修改'
-                            )
+                            if field == 'billing_expr':
+                                new_expr = item.get('new').get(field)
+                                old_expr = ''
+                                for station_model in station_data:
+                                    if station_model.get(
+                                        'model_name'
+                                    ) == model.get('model_name'):
+                                        old_expr = station_model.get(field)
+                                        break
+                                if old_expr != '':
+                                    result['modified_failed'].append(
+                                        model.get('model_name')
+                                    )
+                                    result['advice'].append(
+                                        f'模型{model.get("model_name")}的{field}属性修改失败, 请手动修改'
+                                    )
+                                    continue
+                                corrected = BillingExper.correct_station_expr(
+                                    new_expr, old_expr
+                                )
+                                res = change_billing_expr(
+                                    model.get('model_name'), corrected
+                                )
+
+                                if not res['success']:
+                                    result['modified_failed'].append(
+                                        model.get('model_name')
+                                    )
+                                    result['advice'].append(
+                                        f'模型{model.get("model_name")}的{field}属性修改失败, 请手动修改'
+                                    )
+                            else:
+                                result['modified_failed'].append(model)
+                                result['advice'].append(
+                                    f'无法修改模型{item.get("model_name")}的{field}属性, 请手动修改'
+                                )
                         else:
                             item = {
                                 'key': station_price_type,
@@ -378,7 +412,9 @@ def auto_update_model_data(
                 StationPriceData(station_price),
             )
             if not res['success']:
-                result['modified_failed'] = [item['model'] for item in data]
+                result['modified_failed'].extend(
+                    [item['model'] for item in data]
+                )
                 result['advice'].append(
                     f'下面模型的属性修改失败, 请手动修改:{[item["model"] for item in data]}'
                 )
