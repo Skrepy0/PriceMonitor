@@ -106,6 +106,8 @@ class BillingExper:
         up_price: Dict[str, float], st_price: Dict[str, float]
     ) -> bool:
         for var, coeff in up_price.items():
+            if coeff == 0:
+                continue
             if var not in st_price:
                 return False
             if st_price[var] < coeff:
@@ -143,7 +145,9 @@ class BillingExper:
           2. 若 upstream_val > max_base_price 且 station_val > upstream_val * max_ratio
              → 修正为 upstream_val * price_ratio
         若 station 为空、解析失败或结构不一致，则自动生成一个全零价格树（与上游结构一致），再应用上述修正。
+        此外，若站点缺失某个上游变量，则补全该变量，系数设为 upstream_val * price_ratio（若为0则仍为0）。
         """
+        # 解析上游，若失败则直接返回原站点（或空）
         try:
             up_parser = BillingExper(upstream)
             up_tree = up_parser.parse()
@@ -183,6 +187,11 @@ class BillingExper:
                 up_price = up_node['price']
                 st_price = st_node['price']
                 for var, up_val in up_price.items():
+                    if up_val != 0 and var not in st_price:
+                        st_price[var] = up_val * PRICE_RATIO
+                for var, up_val in up_price.items():
+                    if up_val == 0:
+                        continue
                     st_val = st_price.get(var, 0.0)
                     if st_val < up_val or (
                         up_val > MAX_BASE_PRICE and st_val > up_val * MAX_RATIO
@@ -243,7 +252,9 @@ class BillingExper:
                     raise ValueError(f'无效的项: {term}')
             else:
                 var, coeff = m.group(1), float(m.group(2))
-            price[var] = coeff
+            # 仅当系数不为 0 时存储
+            if coeff != 0:
+                price[var] = coeff
         return price
 
     def _find_outer_operator(self, expr: str):
