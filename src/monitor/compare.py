@@ -9,6 +9,7 @@ from config import (
     PRICE_RATIO,
     GROUP_RATIO_RATIO,
     MAX_RATIO,
+    MAX_BASE_PRICE,
 )
 from controller.group_setter import change_group_ratio
 from controller.price_setter import change_models_data
@@ -214,9 +215,9 @@ def data_compare(upstream_data: list, station_data: list) -> Dict[str, Any]:
                     if isinstance(station_val, (int, float)) and isinstance(
                         upstream_val, (int, float)
                     ):
-                        if (
-                            station_val < upstream_val
-                            or station_val > upstream_val * MAX_RATIO
+                        if station_val < upstream_val or (
+                            upstream_val > MAX_BASE_PRICE
+                            and station_val > upstream_val * MAX_RATIO
                         ):
                             is_abnormal = True
                     else:
