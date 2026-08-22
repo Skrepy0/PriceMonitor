@@ -30,6 +30,7 @@ PRICE_RELATED_KEYS = [
 COMPARE_EXCLUDE_KEYS = ['enable_groups']
 PERIOD = int(os.getenv('PERIOD', '86400'))
 PRICE_RATIO = float(os.getenv('PRICE_RATIO', '1.14'))
+MAX_RATIO = float(os.getenv('MAX_RATIO', '999999999'))
 GROUP_RATIO_RATIO = float(os.getenv('GROUP_RATIO_RATIO', '1'))
 SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.qq.com')
 if not SMTP_HOST:

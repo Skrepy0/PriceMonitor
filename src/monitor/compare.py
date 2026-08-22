@@ -8,6 +8,7 @@ from config import (
     COMPARE_EXCLUDE_KEYS,
     PRICE_RATIO,
     GROUP_RATIO_RATIO,
+    MAX_RATIO,
 )
 from controller.group_setter import change_group_ratio
 from controller.price_setter import change_models_data
@@ -213,7 +214,10 @@ def data_compare(upstream_data: list, station_data: list) -> Dict[str, Any]:
                     if isinstance(station_val, (int, float)) and isinstance(
                         upstream_val, (int, float)
                     ):
-                        if station_val < upstream_val:
+                        if (
+                            station_val < upstream_val
+                            or station_val > upstream_val * MAX_RATIO
+                        ):
                             is_abnormal = True
                     else:
                         if station_val != upstream_val:

@@ -54,6 +54,7 @@ GROUP_RATIO_RATIO=1
 SMTP_FROM=your_email@example.com
 WARNING_EMAIL=a@example.com,b@example.com
 PERIOD=86400
+MAX_RATIO=999999999
 ```
 
 ### 配置项说明
@@ -70,6 +71,7 @@ PERIOD=86400
 - `WARNING_EMAIL`：告警接收邮箱，多个地址用英文逗号或分号分隔
 - `PERIOD`：监控周期，单位为秒，默认 `86400`（1 天）
 - `PRICE_RATIO`：自动修正价格倍率(自动修正价格=`PRICE_RATIO`*上游价格)
+- `MAX_RATIO`：站点价格相对上游价格的最大倍率(站点价格>`MAX_RATIO`*上游价格 时系统自动降低价格)
 - `GROUP_RATIO_RATIO`：分组倍率修正倍率(自动修正倍率=`GROUP_RATIO_RATIO`*上游分组倍率)
 
 ## 安装
