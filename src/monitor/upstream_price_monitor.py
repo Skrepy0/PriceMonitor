@@ -746,10 +746,11 @@ def data_compare(
             new_val = new_item.get(key)
 
             if key == 'enable_groups':
-                old_set = set(old_val) if isinstance(old_val, list) else set()
-                new_set = set(new_val) if isinstance(new_val, list) else set()
-                if old_set != new_set:
-                    changed_fields.append(key)
+                pass
+                # old_set = set(old_val) if isinstance(old_val, list) else set()
+                # new_set = set(new_val) if isinstance(new_val, list) else set()
+                # if old_set != new_set:
+                #     changed_fields.append(key)
             else:
                 if old_val != new_val:
                     changed_fields.append(key)

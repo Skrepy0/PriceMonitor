@@ -22,7 +22,7 @@ PRICE_RELATED_KEYS = [
     'create_cache_ratio',  # 创建缓存倍率
     'billing_mode',  # 计费模式（如 tiered_expr）
     'billing_expr',  # 计费表达式
-    'enable_groups',  # 可用分组（影响价格适用群体）
+    # 'enable_groups',  # 可用分组（影响价格适用群体）
     'quota_type',  # 配额类型（0/1 等）
     'image_ratio',  # 图片相关倍率（如果有）
     'audio_ratio',  # 音频相关倍率
